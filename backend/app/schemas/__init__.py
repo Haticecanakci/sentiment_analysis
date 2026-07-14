@@ -1,0 +1,1 @@
+"""Pydantic istek/yanıt modelleri."""

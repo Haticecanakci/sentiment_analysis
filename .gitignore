@@ -1,0 +1,18 @@
+# Ortam değişkenleri — gerçek .env asla commit edilmez (RULES.md §5)
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Prisma tarafından üretilen client dosyaları ortamda yeniden üretilir
+# (prisma generate); commit edilmez.
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

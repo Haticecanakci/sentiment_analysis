@@ -1,0 +1,59 @@
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Hotel {
+  id      Int      @id @default(autoincrement())
+  name    String?
+  country String?
+  city    String?
+  reviews Review[]
+
+  @@map("hotels")
+}
+
+model Review {
+  id             Int             @id @default(autoincrement())
+  hotelId        Int             @map("hotel_id")
+  hotel          Hotel           @relation(fields: [hotelId], references: [id])
+  reviewText     String          @map("review_text")
+  language       String?
+  country        String?
+  travelerType   String?         @map("traveler_type")
+  sentimentLabel String?         @map("sentiment_label")
+  summary        String?
+  reviewDate     DateTime?       @map("review_date") @db.Date
+  createdAt      DateTime        @default(now()) @map("created_at")
+  keywords       ReviewKeyword[]
+
+  @@index([language])
+  @@index([country])
+  @@index([travelerType])
+  @@index([sentimentLabel])
+  @@map("reviews")
+}
+
+model Keyword {
+  id      Int             @id @default(autoincrement())
+  word    String          @unique
+  reviews ReviewKeyword[]
+
+  @@map("keywords")
+}
+
+model ReviewKeyword {
+  reviewId  Int     @map("review_id")
+  keywordId Int     @map("keyword_id")
+  review    Review  @relation(fields: [reviewId], references: [id])
+  keyword   Keyword @relation(fields: [keywordId], references: [id])
+
+  @@id([reviewId, keywordId])
+  @@map("review_keywords")
+}
