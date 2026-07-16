@@ -26,6 +26,7 @@ from app.config import get_settings
 from app.core.constants import CSV_REQUIRED_COLUMNS
 from app.core.exceptions import CsvValidationError
 from app.database import db
+from app.services import gemini_service
 from app.services.enrichment_service import EnrichmentResult, enrich_review
 from app.services.language_service import country_from_language, detect_language
 
@@ -163,10 +164,14 @@ async def import_csv(content: bytes) -> ImportSummary:
 
     hotel_id = await _get_default_hotel_id()
 
+    # Token sayaçları import başına tutulur: başta sıfırla, analiz bitince
+    # input/output/toplam token özetini terminale yaz.
+    gemini_service.reset_usage_totals()
     semaphore = asyncio.Semaphore(get_settings().gemini_max_concurrency)
     results = await asyncio.gather(
         *(_analyze_row(row, semaphore) for row in rows), return_exceptions=True
     )
+    gemini_service.log_usage_totals()
 
     for row, result in zip(rows, results):
         if isinstance(result, BaseException):
