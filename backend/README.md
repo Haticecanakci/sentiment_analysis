@@ -29,8 +29,8 @@ backend/
 │   ├── main.py            # FastAPI app, lifespan, /health
 │   ├── config.py          # Ayarlar (env'den)
 │   ├── database.py        # Prisma singleton + connect/disconnect
-│   ├── routers/           # reviews.py, dashboard.py
-│   ├── services/          # csv, language, gemini, enrichment, review, dashboard
+│   ├── routers/           # reviews.py, dashboard.py, chat.py
+│   ├── services/          # csv, language, gemini (enrichment + chat), enrichment, review, dashboard
 │   ├── schemas/           # Pydantic yanıt modelleri
 │   └── core/              # constants.py, exceptions.py
 ├── prisma/schema.prisma
@@ -83,6 +83,7 @@ Etkileşimli dokümantasyon: `http://127.0.0.1:8000/docs`.
 | GET | `/reviews/{id}` | Tek yorum detayı (otel + anahtar kelimeler) |
 | GET | `/reviews/filters` | Dropdown'lar için distinct değerler |
 | GET | `/dashboard` | Tüm agregasyonlar tek yanıtta |
+| POST | `/chat` | Dashboard'daki sohbet widget'i için serbest metin Gemini yanıtı |
 
 `GET /reviews` parametreleri: `country` (ISO kodu, örn. `DE`), `traveler_type`,
 `sentiment_label`, `language`, `search`, `date_range`, `sort`, `page`,
@@ -187,6 +188,21 @@ DB yazımı hızlı olduğundan ve keyword upsert'lerinde yarış koşulunu önl
 için sıralıdır. Dashboard'daki bağımsız `group_by` sorguları `asyncio.gather`
 ile paralel çalışır ve tek endpoint'ten döner (tek round-trip).
 
+### Sohbet widget'i — serbest metin + `import_csv` function calling
+`/chat`, dashboard'daki asistan widget'i içindir ve `gemini_service.chat_reply`
+üzerinden çalışır. Zenginleştirmenin aksine `response_schema` zorlanmaz
+(amaç serbest sohbet); ancak tek bir istisna olarak Gemini'ye parametresiz
+bir `import_csv` fonksiyonu tanımlanır (`types.Tool`/`FunctionDeclaration`).
+Kullanıcı "CSV yükle / yorumları içe aktar" gibi bir niyet belirtirse model
+bu fonksiyonu çağırır; biz bunu yakalayıp yanıtı `action=import_csv` olarak
+işaretleriz, frontend (`ChatWidget.tsx`) de mevcut `CSVImportModal`'ı açar.
+Aynı modalı sohbetteki "CSV İçe Aktar" kısayol butonu da açar — ikisi de
+aynı, tek bir UI eylemine çıkar; gerçek dosya seçimi/yükleme her zaman
+arayüzde kalır, Gemini dosyaya dokunmaz. Diğer tüm mesajlarda `action=chat`
+döner ve düz metin yanıtı gösterilir. Sohbet geçmişi kalıcı değildir: her
+istekte frontend state'inden gönderilir, DB'de saklanmaz (oturum kapanınca
+sıfırlanır); bu, kapsam dışı bir Prisma modeli eklemeden en basit çözümdür.
+
 ## PROJECT.md'den Bilinçli Sapmalar
 
 - `Review.sentimentScore` ve `ReviewKeyword.score` alanları kaldırıldı
@@ -199,3 +215,6 @@ ile paralel çalışır ve tek endpoint'ten döner (tek round-trip).
   (`review_id, kategori, altkategori_full, sentiment, text`) uyarlandı.
 - `pandas` yerine standart `csv` modülü kullanıldı: satır bazlı okuma ve
   doğrulama için yeterli, ek bağımlılık ve NaN tip sürprizleri yok.
+- `POST /chat` eklendi: PROJECT.md §7'deki "sonlandırılmış set" dışında,
+  dashboard'a sonradan eklenen bir asistan widget'ı içindir. Kapsamı dardır
+  (serbest metin sohbet); şema/DB değişikliği gerektirmez.

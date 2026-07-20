@@ -7,6 +7,7 @@ import AnalyticsCharts from './components/AnalyticsCharts';
 import ReviewsTable from './components/ReviewsTable';
 import ReviewDrawer from './components/ReviewDrawer';
 import CSVImportModal from './components/CSVImportModal';
+import ChatWidget from './components/ChatWidget';
 import { fetchDashboard, fetchHealth } from './api/client';
 import { DashboardResponse, ImportResultResponse } from './types';
 
@@ -175,6 +176,10 @@ export default function App() {
         onClose={() => setIsCSVOpen(false)}
         onImportSuccess={handleImportSuccess}
       />
+
+      {/* 5. Floating Chat Assistant — "CSV İçe Aktar" tool'una basılırsa
+          mevcut modalı açar; aksi halde normal Gemini sohbeti devam eder. */}
+      <ChatWidget onOpenCSVImport={() => setIsCSVOpen(true)} />
     </div>
   );
 }

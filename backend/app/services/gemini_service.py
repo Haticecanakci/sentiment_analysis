@@ -1,10 +1,21 @@
-"""Gemini istemcisi ve yapısal çıktı çağrısı (RULES.md §8).
+"""Gemini istemcisi ve çağrı mantığı (RULES.md §8).
 
-Gemini API'ye yalnızca bu modül erişir. Çıktı şeması (traveler_type,
-sentiment_label, summary, keywords) tek yerde, aşağıdaki
-`GeminiEnrichment` modelinde tanımlanır ve `response_schema` (JSON modu)
-ile zorlanır: amaç dış bir fonksiyon çalıştırmak değil yapısal veri geri
-almak olduğundan function calling yerine bu mekanizma seçildi (PROJECT.md §6).
+Gemini API'ye yalnızca bu modül erişir. İki kullanım şekli var:
+
+- **Zenginleştirme** (`enrich_review_text`): çıktı şeması (traveler_type,
+  sentiment_label, summary, keywords) tek yerde, aşağıdaki
+  `GeminiEnrichment` modelinde tanımlanır ve `response_schema` (JSON modu)
+  ile zorlanır: amaç dış bir fonksiyon çalıştırmak değil yapısal veri geri
+  almak olduğundan function calling yerine bu mekanizma seçildi (PROJECT.md §6).
+- **Sohbet** (`chat_reply`): dashboard'daki asistan widget'i için şema
+  zorlaması olmayan serbest metin yanıtı üretir. Tek istisna: `import_csv`
+  adında bir fonksiyon Gemini'ye tanımlanır (function calling); kullanıcı
+  CSV/yorum içe aktarma niyeti belirtirse model bu fonksiyonu çağırır, biz
+  de bunu `ChatAction.IMPORT_CSV` olarak frontend'e bildiririz — frontend
+  mevcut CSVImportModal'ı açar (gerçek dosya yükleme yine UI'da kalır).
+
+İkisi de istek numaralandırma/loglama/hata mekanizmasını `_generate`
+yardımcı fonksiyonu üzerinden paylaşır.
 """
 
 import itertools
@@ -16,46 +27,39 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
-
-from pydantic import BaseModel
-
 from app.config import get_settings
-from app.core.constants import SentimentLabel, TravelerType
-from app.core.exceptions import EnrichmentError
+from app.core.constants import ChatAction
+from app.core.exceptions import ChatError, EnrichmentError
+from app.schemas.enrichment import PROMPT_PREFIX, GeminiEnrichment
 
 logger = logging.getLogger(__name__)
 
-
-class KeywordItem(BaseModel):
-    """Tek anahtar kelime: kelime."""
-
-    word: str
-
-
-
-class GeminiEnrichment(BaseModel):
-    """Gemini'den istenen yapısal çıktı şeması.
-
-    Enum alanları constants.py'deki StrEnum'lardan gelir; Pydantic modeli
-    response_schema olarak verildiğinde enum değerleri Gemini'ye dayatılır.
-    """
-
-    traveler_type: TravelerType
-    sentiment_label: SentimentLabel
-    summary: str
-    keywords: list[KeywordItem]
-
-
-# Kısa ve direktif prompt (RULES.md §8); şema zorlaması response_schema'da.
-_PROMPT_PREFIX = (
-    "Asagidaki otel yorumunu analiz et ve istenen alanlari uret:\n"
-    "- traveler_type: seyahat tipini sec; yorumdan net anlasilmiyorsa 'Unknown'.\n"
-    "- sentiment_label: Pozitif, Negatif veya Notr.\n"
-    "- summary: yorumun hangi dilde olursa olsun türkçe dilinde 1-2 cumlelik kisa ozet.\n"
-    "- keywords: yorum hangi dilde olursa olsun türkçe dilinde en fazla 5 anahtar kelime , 5 kelime olamk zorunda değil\n"
-
-    "\nYorum:\n"
+# Sohbet widget'i için sistem talimatı: import_csv function-call ne zaman
+# tetiklenir onu tarif eder; asil dosya secimi yine UI'da kalir.
+_CHAT_SYSTEM_INSTRUCTION = (
+    "Sen otel yorumlari dil ve duygu analizi panelinde calisan bir "
+    "asistansin. Panel ve veriler hakkindaki sorulara kisa, net ve turkce "
+    "cevaplar ver. Kullanici CSV dosyasi yuklemek, yorumlari ice aktarmak "
+    "veya toplu veri eklemek istedigini belirtirse import_csv fonksiyonunu "
+    "cagir; dosya secimi ayrica arayuzde yapilir, sen bunu tetiklemezsin."
 )
+
+# Gemini'ye tanımlanan tek fonksiyon: parametre almaz, yalnızca kullanıcının
+# CSV içe aktarma niyetini yakalamak için kullanılır (bkz. chat_reply).
+_IMPORT_CSV_FUNCTION = types.FunctionDeclaration(
+    name="import_csv",
+    description=(
+        "Kullanici CSV dosyasi yuklemek, yorumlari ice aktarmak veya toplu "
+        "veri eklemek istedigini belirttiginde cagrilir."
+    ),
+    parameters=types.Schema(type=types.Type.OBJECT, properties={}),
+)
+_CHAT_TOOLS = [types.Tool(function_declarations=[_IMPORT_CSV_FUNCTION])]
+
+# import_csv cagrildiginda kullaniciya gosterilen sabit yanit; Gemini'nin
+# fonksiyon cagrisiyla ayni turde metin uretmemesi ihtimaline karsi
+# tutarli bir mesaj burada, kod tarafinda uretilir.
+_IMPORT_CSV_REPLY = "CSV ice aktarma penceresini aciyorum; dosyani oradan yukleyebilirsin."
 
 _client: genai.Client | None = None
 
@@ -101,32 +105,31 @@ def _get_client() -> genai.Client:
     return _client
 
 
-async def enrich_review_text(review_text: str) -> GeminiEnrichment:
-    """Tek yorum için tek Gemini çağrısıyla tüm zenginleştirme alanlarını üretir.
+async def _generate(
+    label: str,
+    contents: str | list[types.Content],
+    config: types.GenerateContentConfig,
+) -> types.GenerateContentResponse:
+    """Ortak Gemini çağrısı: istek numaralandırma, süre/hata/token loglaması.
 
-    Her istek numaralandırılıp terminale loglanır: başarıda HTTP 200 + süre +
-    token sayısı, hatada HTTP kodu/hata adı + açıklaması (RULES.md §6).
-    Başarısızlıkta (ağ/timeout/geçersiz çıktı) `EnrichmentError` fırlatır;
-    alanları null bırakmak çağıran katmanın sorumluluğudur.
+    `enrich_review_text` ve `chat_reply` bu sarmalayıcıyı paylaşır; ikisi de
+    başarıda HTTP 200 + süre + token, hatada HTTP kodu/hata adı + açıklama
+    ile aynı formatta loglanır (RULES.md §6). Hata durumunda loglanıp
+    olduğu gibi yeniden fırlatılır; hangi özel hata sınıfına
+    (`EnrichmentError`/`ChatError`) çevrileceğine çağıran karar verir.
     """
     settings = get_settings()
     request_no = next(_request_counter)
     logger.info(
-        "Gemini istek #%d gonderiliyor (model=%s, metin='%.40s...')",
+        "Gemini istek #%d gonderiliyor (model=%s, %s)",
         request_no,
         settings.gemini_model,
-        review_text.replace("\n", " "),
+        label,
     )
     started = time.perf_counter()
     try:
         response = await _get_client().aio.models.generate_content(
-            model=settings.gemini_model,
-            contents=_PROMPT_PREFIX + review_text,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=GeminiEnrichment,
-                temperature=0.0,
-            ),
+            model=settings.gemini_model, contents=contents, config=config
         )
     except genai_errors.APIError as exc:  # API hataları: HTTP kodu + açıklama
         logger.error(
@@ -137,7 +140,7 @@ async def enrich_review_text(review_text: str) -> GeminiEnrichment:
             time.perf_counter() - started,
             exc.message,
         )
-        raise EnrichmentError(f"Gemini cagrisi basarisiz: {exc}") from exc
+        raise
     except Exception as exc:  # API dışı hatalar (ağ kopması, timeout vb.)
         logger.error(
             "Gemini istek #%d BASARISIZ: %s (%.2fs) — %s",
@@ -146,7 +149,7 @@ async def enrich_review_text(review_text: str) -> GeminiEnrichment:
             time.perf_counter() - started,
             exc,
         )
-        raise EnrichmentError(f"Gemini cagrisi basarisiz: {exc}") from exc
+        raise
 
     usage = response.usage_metadata
     input_tokens = (usage.prompt_token_count or 0) if usage else 0
@@ -165,12 +168,73 @@ async def enrich_review_text(review_text: str) -> GeminiEnrichment:
         output_tokens,
         total_tokens,
     )
+    return response
+
+
+async def enrich_review_text(review_text: str) -> GeminiEnrichment:
+    """Tek yorum için tek Gemini çağrısıyla tüm zenginleştirme alanlarını üretir.
+
+    Başarısızlıkta (ağ/timeout/geçersiz çıktı) `EnrichmentError` fırlatır;
+    alanları null bırakmak çağıran katmanın sorumluluğudur.
+    """
+    try:
+        response = await _generate(
+            label=f"metin='{review_text[:40].replace(chr(10), ' ')}...'",
+            contents=PROMPT_PREFIX + review_text,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GeminiEnrichment,
+                temperature=0.0,
+            ),
+        )
+    except Exception as exc:
+        raise EnrichmentError(f"Gemini cagrisi basarisiz: {exc}") from exc
 
     parsed = response.parsed
     if not isinstance(parsed, GeminiEnrichment):
-        logger.error(
-            "Gemini istek #%d: HTTP 200 dondu ama cikti semaya uymuyor.",
-            request_no,
-        )
+        logger.error("Gemini yaniti HTTP 200 dondu ama cikti semaya uymuyor.")
         raise EnrichmentError("Gemini bos veya semaya uymayan cikti dondurdu.")
     return parsed
+
+
+async def chat_reply(message: str, history: list[tuple[str, str]]) -> tuple[str, ChatAction]:
+    """Dashboard sohbet widget'i için yanıt üretir; metin veya `import_csv` eylemi döner.
+
+    Zenginleştirmeden farklı olarak `response_schema` zorlanmaz; Gemini'ye
+    yalnızca `import_csv` fonksiyonu tanımlanır (`_CHAT_TOOLS`). `history`,
+    önceki turleri (role, content) çiftleri olarak taşır; role
+    'user'/'assistant' değerlerini alır ve burada Gemini'nin beklediği
+    'user'/'model' rollerine çevrilir. Başarısızlıkta/boş yanıtta
+    `ChatError` fırlatır.
+    """
+    contents = [
+        types.Content(
+            role="model" if role == "assistant" else "user",
+            parts=[types.Part(text=text)],
+        )
+        for role, text in history
+    ]
+    contents.append(types.Content(role="user", parts=[types.Part(text=message)]))
+
+    try:
+        response = await _generate(
+            label=f"chat, mesaj='{message[:40].replace(chr(10), ' ')}...'",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=_CHAT_SYSTEM_INSTRUCTION,
+                temperature=0.4,
+                tools=_CHAT_TOOLS,
+            ),
+        )
+    except Exception as exc:
+        raise ChatError(f"Gemini sohbet cagrisi basarisiz: {exc}") from exc
+
+    calls = response.function_calls or []
+    if any(call.name == "import_csv" for call in calls):
+        return _IMPORT_CSV_REPLY, ChatAction.IMPORT_CSV
+
+    reply = (response.text or "").strip()
+    if not reply:
+        logger.error("Gemini sohbet yaniti HTTP 200 dondu ama metin bos.")
+        raise ChatError("Gemini bos yanit dondurdu.")
+    return reply, ChatAction.CHAT

@@ -10,8 +10,8 @@ import logging
 from dataclasses import dataclass, field
 
 from app.core.exceptions import EnrichmentError
+from app.schemas.enrichment import KeywordItem
 from app.services import gemini_service
-from app.services.gemini_service import KeywordItem
 
 logger = logging.getLogger(__name__)
 

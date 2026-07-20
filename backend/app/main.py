@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import connect_db, db, disconnect_db
-from app.routers import dashboard, reviews
+from app.routers import chat, dashboard, reviews
 from app.schemas.health import HealthResponse
 
 logging.basicConfig(
@@ -57,6 +57,7 @@ app.add_middleware(
 
 app.include_router(reviews.router)
 app.include_router(dashboard.router)
+app.include_router(chat.router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])

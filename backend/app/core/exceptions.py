@@ -31,3 +31,11 @@ class EnrichmentError(AppError):
     Import pipeline'ında yakalanır ve loglanır; yorum yine kaydedilir,
     zenginleştirme alanları null kalır (import çökmez, RULES.md §6).
     """
+
+
+class ChatError(AppError):
+    """Gemini sohbet çağrısı başarısız oldu veya boş yanıt döndü.
+
+    Import pipeline'ının aksine burada yutulacak bir arka plan işlemi yoktur;
+    router bu hatayı yakalayıp kullanıcıya HTTP 502 olarak döndürür.
+    """

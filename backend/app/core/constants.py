@@ -35,6 +35,17 @@ class SortOrder(StrEnum):
     DATE_ASC = "date_asc"  # eskiden yeniye
 
 
+class ChatAction(StrEnum):
+    """Sohbet yanıtının frontend'e söylediği eylem türü.
+
+    Gemini'ye tanımlanan `import_csv` fonksiyonu çağrılırsa IMPORT_CSV
+    döner; frontend bunu görünce mevcut CSVImportModal'ı açar (gemini_service.py).
+    """
+
+    CHAT = "chat"
+    IMPORT_CSV = "import_csv"
+
+
 class DateRange(StrEnum):
     """Göreli tarih filtresi seçenekleri (`GET /reviews` `date_range` parametresi)."""
 

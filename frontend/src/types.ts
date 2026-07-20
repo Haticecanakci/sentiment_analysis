@@ -69,6 +69,20 @@ export interface HealthResponse {
   database: string;
 }
 
+// Sohbet widget'i — geçmiş yalnızca oturum state'inde tutulur, kalıcı değildir.
+export interface ChatHistoryItem {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// action: 'import_csv' demek Gemini'nin tanımlı import_csv fonksiyonunu
+// çağırdığı (kullanıcının CSV içe aktarma niyeti belirttiği) anlamına
+// gelir; bu durumda ChatWidget mevcut CSVImportModal'ı açar.
+export interface ChatResponse {
+  reply: string;
+  action: 'chat' | 'import_csv';
+}
+
 // UI tarafındaki filtre/sıralama seçimleri; `/reviews` sorgu parametrelerine
 // birebir dönüştürülür (bkz. src/api/client.ts -> fetchReviews).
 export interface ReviewFilters {

@@ -3,6 +3,8 @@
 // çağrısı bileşenlerde bulunmaz.
 
 import {
+  ChatHistoryItem,
+  ChatResponse,
   DashboardResponse,
   FilterOptionsResponse,
   HealthResponse,
@@ -117,5 +119,15 @@ export function importReviewsCsv(file: File): Promise<ImportResultResponse> {
   return request<ImportResultResponse>('/reviews/import', {
     method: 'POST',
     body: formData,
+  });
+}
+
+/** POST /chat — sohbet widget'i için serbest metin Gemini yanıtı. Geçmiş
+ * yalnızca bu istekle birlikte gönderilir; sunucu tarafında saklanmaz. */
+export function sendChatMessage(message: string, history: ChatHistoryItem[]): Promise<ChatResponse> {
+  return request<ChatResponse>('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history }),
   });
 }
