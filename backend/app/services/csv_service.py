@@ -1,6 +1,7 @@
 """CSV import pipeline orkestrasyonu (PROJECT.md §5).
 
-Kaynak CSV formatı: review_id, kategori, altkategori_full, sentiment, text.
+Kaynak CSV formatı: review_id, kategori, altkategori_full, sentiment, text
+ve isteğe bağlı date (YYYY-MM-DD, Review.reviewDate'e yazılır).
 Aynı review_id birden çok satırda (kategori başına) tekrar ettiğinden satırlar
 review_id ile TEKİLLEŞTİRİLİR; kategori ve CSV'deki sentiment sütunu yok
 sayılır (duygu etiketi yorumun bütününden Gemini ile üretilir).
@@ -21,6 +22,7 @@ import csv
 import io
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.config import get_settings
 from app.core.constants import CSV_REQUIRED_COLUMNS
@@ -39,6 +41,28 @@ class ParsedRow:
 
     review_id: str
     review_text: str
+    review_date: datetime | None = None
+
+
+def _parse_review_date(raw: str | None, line_no: int) -> datetime | None:
+    """İsteğe bağlı date hücresini (YYYY-MM-DD) UTC datetime'a çevirir.
+
+    Boş/eksik değer sessizce None döner (kolon isteğe bağlı); biçimi bozuk
+    değer satırı düşürmez, uyarı loglanıp None döner (RULES.md §6).
+    """
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        logger.warning(
+            "Satir %d: 'date' degeri cozumlenemedi (%r), null birakildi.",
+            line_no,
+            value,
+        )
+        return None
+    return parsed.replace(tzinfo=timezone.utc)
 
 
 @dataclass
@@ -89,7 +113,13 @@ def parse_csv(content: bytes) -> tuple[list[ParsedRow], int, int]:
             duplicates += 1
             continue
         seen_ids.add(review_id)
-        rows.append(ParsedRow(review_id=review_id, review_text=review_text))
+        rows.append(
+            ParsedRow(
+                review_id=review_id,
+                review_text=review_text,
+                review_date=_parse_review_date(raw.get("date"), line_no),
+            )
+        )
     return rows, skipped, duplicates
 
 
@@ -139,6 +169,7 @@ async def _save_review(
             "travelerType": enrichment.traveler_type,
             "sentimentLabel": enrichment.sentiment_label,
             "summary": enrichment.summary,
+            "reviewDate": row.review_date,
         }
     )
     for word in enrichment.keywords:

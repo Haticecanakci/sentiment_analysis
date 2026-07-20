@@ -68,6 +68,11 @@ Etkileşimli dokümantasyon: `http://127.0.0.1:8000/docs`.
 > **Not:** `prisma/schema.prisma` her değiştiğinde `prisma generate`
 > (ve şemayı DB'ye yansıtmak için `prisma db push`) yeniden çalıştırılmalıdır.
 
+> **Windows notu:** Proje yolu Türkçe karakter içeriyorsa (örn. "Masaüstü"),
+> `prisma generate` çalıştırmadan önce PowerShell'de `$env:PYTHONUTF8 = "1"`
+> ayarlanmalıdır; aksi halde üretilen client dosyaları bozuk adlı bir klasöre
+> yazılır ve uygulama "Client hasn't been generated yet" hatası verir.
+
 ## API Endpoint'leri
 
 | Method | Path | Açıklama |
@@ -80,7 +85,19 @@ Etkileşimli dokümantasyon: `http://127.0.0.1:8000/docs`.
 | GET | `/dashboard` | Tüm agregasyonlar tek yanıtta |
 
 `GET /reviews` parametreleri: `country` (ISO kodu, örn. `DE`), `traveler_type`,
-`sentiment_label`, `language`, `search`, `page`, `page_size` (en fazla 100).
+`sentiment_label`, `language`, `search`, `date_range`, `sort`, `page`,
+`page_size` (en fazla 100).
+
+`date_range` göreli tarih filtresidir; `review_date` alanına uygulanır ve tek
+bir değer alır: `1w` (son 1 hafta), `1m` (son 1 ay), `3m` (son 3 ay), `6m`
+(son 6 ay), `1y` (son 1 yıl). Ay/yıl sabit gün sayısıyla yaklaşıklanır
+(30/365 gün); `review_date` değeri olmayan kayıtlar filtre uygulanınca elenir.
+
+`sort` tarihe göre sıralamadır: `date_desc` (yeniden eskiye) veya `date_asc`
+(eskiden yeniye); verilmezse en son eklenen kayıt üstte gelir. Sıralama ve
+sayfalama DB'de yapılır (ORDER BY + LIMIT/OFFSET, `review_date` index'li);
+aynı tarihli kayıtlarda `id` eşitlik bozucudur. `review_date` değeri olmayan
+kayıtlar sıralamadan elenmez, listenin bir ucunda toplanır.
 
 Örnek import:
 
@@ -91,7 +108,7 @@ curl -X POST http://127.0.0.1:8000/reviews/import \
 
 ## CSV Formatı ve Import Davranışı
 
-Beklenen sütunlar: `review_id, kategori, altkategori_full, sentiment, text`
+Beklenen sütunlar: `review_id, kategori, altkategori_full, sentiment, text, date`
 (zorunlu olanlar: `review_id`, `text`).
 
 - **Tekilleştirme:** Aynı `review_id` dosyada kategori başına tekrar ettiği
@@ -101,6 +118,10 @@ Beklenen sütunlar: `review_id, kategori, altkategori_full, sentiment, text`
   dışındadır. CSV'deki `sentiment` sütunu kategori (aspect) bazlı etiketlendiği
   ve aynı yorum için çelişkili değerler içerdiği için kullanılmaz; duygu
   etiketi yorumun bütününden Gemini ile üretilir.
+- **Tarih:** İsteğe bağlı `date` sütunu (`YYYY-MM-DD`) `Review.review_date`
+  alanına yazılır; `date_range` filtresi bu alan üzerinden çalışır. Sütun
+  yoksa, hücre boşsa veya biçim bozuksa alan null kalır (bozuk biçim satırı
+  düşürmez, uyarı loglanır).
 - **Otel:** CSV otel bilgisi içermediğinden tüm yorumlar, alanları null olan
   tek bir varsayılan Hotel kaydına bağlanır (yoksa otomatik oluşturulur).
 - **Hata izolasyonu:** Tek bir yorumdaki Gemini/langdetect hatası import'u

@@ -5,6 +5,7 @@ uygun HTTP kodlarına çevrilir (RULES.md §6).
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
+from app.core.constants import DateRange, SortOrder
 from app.core.exceptions import CsvValidationError, ReviewNotFoundError
 from app.schemas.import_result import ImportResultResponse
 from app.schemas.review import (
@@ -40,6 +41,16 @@ async def list_reviews(
     sentiment_label: str | None = None,
     language: str | None = None,
     search: str | None = Query(default=None, description="Yorum metninde arama"),
+    date_range: DateRange | None = Query(
+        default=None,
+        description="Göreli tarih aralığı: 1w (son 1 hafta), 1m (son 1 ay), "
+        "3m (son 3 ay), 6m (son 6 ay), 1y (son 1 yıl)",
+    ),
+    sort: SortOrder | None = Query(
+        default=None,
+        description="Tarihe göre sıralama: date_desc (yeniden eskiye), "
+        "date_asc (eskiden yeniye); verilmezse en son eklenen üstte",
+    ),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(
         default=review_service.DEFAULT_PAGE_SIZE,
@@ -54,6 +65,8 @@ async def list_reviews(
         sentiment_label=sentiment_label,
         language=language,
         search=search,
+        date_range=date_range,
+        sort=sort,
         page=page,
         page_size=page_size,
     )

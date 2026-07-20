@@ -37,6 +37,7 @@ model Review {
   @@index([country])
   @@index([travelerType])
   @@index([sentimentLabel])
+  @@index([reviewDate])
   @@map("reviews")
 }
 

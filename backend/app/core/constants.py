@@ -28,9 +28,39 @@ class SentimentLabel(StrEnum):
     NOTR = "Nötr"
 
 
+class SortOrder(StrEnum):
+    """Yorum listesi sıralama seçenekleri (`GET /reviews` `sort` parametresi)."""
+
+    DATE_DESC = "date_desc"  # yeniden eskiye
+    DATE_ASC = "date_asc"  # eskiden yeniye
+
+
+class DateRange(StrEnum):
+    """Göreli tarih filtresi seçenekleri (`GET /reviews` `date_range` parametresi)."""
+
+    LAST_WEEK = "1w"
+    LAST_MONTH = "1m"
+    LAST_3_MONTHS = "3m"
+    LAST_6_MONTHS = "6m"
+    LAST_YEAR = "1y"
+
+
+# Göreli aralıkların gün karşılıkları; ay/yıl sabit gün sayısıyla
+# yaklaşıklanır (30/365), takvim ayı hesabı yapılmaz.
+DATE_RANGE_DAYS: dict[DateRange, int] = {
+    DateRange.LAST_WEEK: 7,
+    DateRange.LAST_MONTH: 30,
+    DateRange.LAST_3_MONTHS: 90,
+    DateRange.LAST_6_MONTHS: 180,
+    DateRange.LAST_YEAR: 365,
+}
+
+
 # Gemini şemasına ve doğrulamalara verilecek düz değer listeleri.
 TRAVELER_TYPE_VALUES: list[str] = [t.value for t in TravelerType]
 SENTIMENT_LABEL_VALUES: list[str] = [s.value for s in SentimentLabel]
+DATE_RANGE_VALUES: list[str] = [d.value for d in DateRange]
+SORT_ORDER_VALUES: list[str] = [s.value for s in SortOrder]
 
 # Dil tespit edilemediğinde kullanılacak değer (RULES.md §9).
 UNKNOWN_LANGUAGE: str = "unknown"

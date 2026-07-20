@@ -88,9 +88,15 @@ class ReviewListResponse(BaseModel):
 
 
 class FilterOptionsResponse(BaseModel):
-    """Filtre dropdown'ları için distinct değerler."""
+    """Filtre dropdown'ları için distinct değerler.
+
+    date_ranges ve sort_orders veriden değil sabit seçenek listelerinden
+    gelir (DateRange: 1w, 1m, 3m, 6m, 1y — SortOrder: date_desc, date_asc).
+    """
 
     countries: list[str]
     languages: list[str]
     traveler_types: list[str]
     sentiment_labels: list[str]
+    date_ranges: list[str]
+    sort_orders: list[str]
