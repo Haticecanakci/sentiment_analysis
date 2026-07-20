@@ -17,16 +17,18 @@ TOP_COUNTRIES_LIMIT: int = 10
 async def _grouped_counts(
     field: str, extra_where: dict | None = None
 ) -> list[dict]:
-    """Bir alanın null olmayan değerlerine göre gruplu sayım döndürür.
+    """Bir alana göre gruplu sayım döndürür (çoktan aza sıralı).
 
-    Sonuç, çoktan aza sıralı [{"value": ..., "count": ...}] listesidir.
+    Sonuç [{"value": ..., "count": ...}] listesidir. Gruplanan alanlar
+    (country/language/travelerType/sentimentLabel) şemada NOT NULL
+    olduğundan ayrı bir null eleme koşuluna gerek yoktur; aksine
+    `{field: {"not": None}}` Prisma Python client'ı tarafından geçersiz
+    sayılır (bkz. review_service._distinct_values ile aynı gerekçe).
     Grup sayısı küçük olduğundan (en fazla distinct değer kadar) sıralama
     Python tarafında yapılır; bu, Prisma client sürümleri arasında aggregate
     sıralama davranış farklarına bağımlılığı da ortadan kaldırır.
     """
-    where: dict = {field: {"not": None}}
-    if extra_where:
-        where.update(extra_where)
+    where: dict = dict(extra_where) if extra_where else {}
     groups = await db.review.group_by([field], count=True, where=where)
     items = [
         {"value": group[field], "count": group["_count"]["_all"]}

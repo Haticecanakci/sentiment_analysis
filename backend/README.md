@@ -124,10 +124,18 @@ Beklenen sütunlar: `review_id, kategori, altkategori_full, sentiment, text, dat
   düşürmez, uyarı loglanır).
 - **Otel:** CSV otel bilgisi içermediğinden tüm yorumlar, alanları null olan
   tek bir varsayılan Hotel kaydına bağlanır (yoksa otomatik oluşturulur).
-- **Hata izolasyonu:** Tek bir yorumdaki Gemini/langdetect hatası import'u
-  çökertmez; hata loglanır, ilgili alanlar null kalır, işlem devam eder.
+- **Hata izolasyonu:** Tek bir yorumdaki hata import'u çökertmez, ama iki
+  farklı durum ayrı ele alınır:
+  - **Dil/ülke tespit edilemedi:** `country` şemada NOT NULL olduğundan
+    `"UNKNOWN"` yer tutucusuyla kaydedilir; bu Gemini'nin başarısıyla
+    ilgisizdir, satırı engellemez.
+  - **Gemini zenginleştirmesi başarısız** (`traveler_type`/`sentiment_label`/
+    `summary` üretilemedi): satır DB'ye hiç yazılmaz, hata loglanır ve
+    `enrichment_failed` sayacına eklenir; işlem diğer satırlarla devam eder.
 - **Özet yanıtı:** `total_rows`, `imported`, `skipped`, `duplicates`,
-  `enrichment_failed` sayaçları döner.
+  `enrichment_failed` sayaçları döner. `enrichment_failed`, zenginleştirmesi
+  başarısız olduğu için DB'ye hiç yazılmayan yorum sayısıdır (`imported`'a
+  dahil değildir).
 
 ## Teknik Seçimler ve Gerekçeleri
 

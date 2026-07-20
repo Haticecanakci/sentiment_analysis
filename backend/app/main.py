@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import connect_db, db, disconnect_db
 from app.routers import dashboard, reviews
@@ -34,6 +35,24 @@ app = FastAPI(
     "acisindan analiz eden backend (PROJECT.md).",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+
+# Frontend (Vite/Express dev server) farklı origin'den çalıştığından tarayıcı
+# fetch çağrıları CORS izni olmadan engellenir. Sadece yerel geliştirme
+# origin'lerine izin verilir (RULES.md kapsamında backend/frontend ayrı
+# süreçlerdir; kimlik doğrulama olmadığından geniş metod/header izni güvenlidir).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(reviews.router)
