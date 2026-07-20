@@ -11,7 +11,7 @@ datasource db {
 
 model Hotel {
   id      Int      @id @default(autoincrement())
-  name    String?
+  name    String?  @db.VarChar(250)
   country String?
   city    String?
   reviews Review[]
@@ -23,12 +23,12 @@ model Review {
   id             Int             @id @default(autoincrement())
   hotelId        Int             @map("hotel_id")
   hotel          Hotel           @relation(fields: [hotelId], references: [id])
-  reviewText     String          @map("review_text")
-  language       String?
-  country        String?
-  travelerType   String?         @map("traveler_type")
-  sentimentLabel String?         @map("sentiment_label")
-  summary        String?
+  reviewText     String          @map("review_text") @db.VarChar(5000)
+  language       String
+  country        String
+  travelerType   String          @map("traveler_type")
+  sentimentLabel String          @map("sentiment_label")
+  summary        String
   reviewDate     DateTime?       @map("review_date") @db.Date
   createdAt      DateTime        @default(now()) @map("created_at")
   keywords       ReviewKeyword[]
@@ -37,6 +37,7 @@ model Review {
   @@index([country])
   @@index([travelerType])
   @@index([sentimentLabel])
+  @@index([reviewDate])
   @@map("reviews")
 }
 
