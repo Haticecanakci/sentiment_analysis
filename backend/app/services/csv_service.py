@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.config import get_settings
-from app.core.constants import CSV_REQUIRED_COLUMNS
+from app.core.constants import CSV_REQUIRED_COLUMNS, UNKNOWN_COUNTRY
 from app.core.exceptions import CsvValidationError
 from app.database import db
 from app.services import gemini_service
@@ -155,11 +155,16 @@ async def _analyze_row(
 async def _save_review(
     row: ParsedRow,
     hotel_id: int,
-    language: str | None,
-    country: str | None,
+    language: str,
+    country: str,
     enrichment: EnrichmentResult,
 ) -> None:
-    """Review satırını ve keyword ilişkilerini yazar."""
+    """Review satırını ve keyword ilişkilerini yazar.
+
+    Çağıran (import_csv), language/country/enrichment alanlarının hiçbirinin
+    None olmadığını garanti ettikten sonra çağırır (şemada NOT NULL); bu
+    fonksiyon zenginleştirme başarısızlığını ele almaz.
+    """
     review = await db.review.create(
         data={
             "hotelId": hotel_id,
@@ -206,11 +211,45 @@ async def import_csv(content: bytes) -> ImportSummary:
 
     for row, result in zip(rows, results):
         if isinstance(result, BaseException):
-            # Beklenmeyen analiz hatası: yorum yine kaydedilir, alanlar null.
-            logger.error("Satir analizi basarisiz (%s): %s", row.review_id, result)
-            language, country, enrichment = None, None, EnrichmentResult()
-        else:
-            language, country, enrichment = result
+            # Beklenmeyen analiz hatası (dil tespiti/Gemini): yorum DB'ye
+            # yazılmaz, yalnızca loglanır ve enrichment_failed'e sayılır.
+            logger.error(
+                "Zenginlestirme basarisiz, yorum kaydedilmedi (%s): %s",
+                row.review_id,
+                result,
+            )
+            summary.enrichment_failed += 1
+            continue
+
+        language, country, enrichment = result
+
+        # Dil tespiti "unknown" veya eşleme dışıysa country None gelir; bu
+        # Gemini'nin sonucuyla ilgisizdir ve satırı engellemez — yalnızca
+        # sabit bir yer tutucuyla doldurulup kaydedilir.
+        if country is None:
+            logger.info(
+                "Ulke tespit edilemedi (dil=%s), '%s' ile kaydedilecek: %s",
+                language,
+                UNKNOWN_COUNTRY,
+                row.review_id,
+            )
+            country = UNKNOWN_COUNTRY
+
+        # Yalnızca Gemini'nin ürettiği alanlar eksikse (gerçek zenginleştirme
+        # hatası) satır kaydedilmez.
+        if (
+            enrichment.traveler_type is None
+            or enrichment.sentiment_label is None
+            or enrichment.summary is None
+        ):
+            logger.warning(
+                "Zenginlestirme eksik, yorum kaydedilmedi (%s): seyahat_tipi=%s duygu=%s",
+                row.review_id,
+                enrichment.traveler_type,
+                enrichment.sentiment_label,
+            )
+            summary.enrichment_failed += 1
+            continue
 
         try:
             await _save_review(row, hotel_id, language, country, enrichment)
@@ -220,9 +259,5 @@ async def import_csv(content: bytes) -> ImportSummary:
             continue
 
         summary.imported += 1
-        # sentiment_label başarılı zenginleştirmede her zaman dolu gelir;
-        # None ise Gemini adımı bu yorum için başarısız olmuş demektir.
-        if enrichment.sentiment_label is None:
-            summary.enrichment_failed += 1
 
     return summary

@@ -51,8 +51,9 @@ _PROMPT_PREFIX = (
     "Asagidaki otel yorumunu analiz et ve istenen alanlari uret:\n"
     "- traveler_type: seyahat tipini sec; yorumdan net anlasilmiyorsa 'Unknown'.\n"
     "- sentiment_label: Pozitif, Negatif veya Notr.\n"
-    "- summary: yorumun dilinde 1-2 cumlelik kisa ozet.\n"
-    "- keywords: en fazla 5 anahtar kelime\n"
+    "- summary: yorumun hangi dilde olursa olsun türkçe dilinde 1-2 cumlelik kisa ozet.\n"
+    "- keywords: yorum hangi dilde olursa olsun türkçe dilinde en fazla 5 anahtar kelime , 5 kelime olamk zorunda değil\n"
+
     "\nYorum:\n"
 )
 

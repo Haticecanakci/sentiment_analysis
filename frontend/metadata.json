@@ -1,0 +1,6 @@
+{
+  "name": "Otel Yorum Analizi",
+  "description": "Yapay Zeka destekli otel yorum analizi, duygu dağılımı, anahtar kelime tespiti ve otomatik raporlama admin paneli.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

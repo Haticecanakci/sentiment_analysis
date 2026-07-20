@@ -65,6 +65,11 @@ SORT_ORDER_VALUES: list[str] = [s.value for s in SortOrder]
 # Dil tespit edilemediğinde kullanılacak değer (RULES.md §9).
 UNKNOWN_LANGUAGE: str = "unknown"
 
+# Dil "unknown" veya eşleme dışıysa country_from_language None döner; ülke
+# şemada NOT NULL olduğundan bu tek başına satırı engellemez, yalnızca bu
+# sabit yer tutucuyla kaydedilir (Gemini zenginleştirmesiyle ilgisizdir).
+UNKNOWN_COUNTRY: str = "UNKNOWN"
+
 # langdetect dil kodu → ISO 3166-1 alpha-2 ülke kodu eşlemesi.
 # langdetect'in çıktı kümesi kapalıdır (55 dil); tamamı burada eşlenir.
 # Çok ülkeli dillerde dilin ana ülkesi seçilmiştir (heuristik bir
